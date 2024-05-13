@@ -15,6 +15,7 @@ import { paths } from "./paths";
 import mkdirp from "mkdirp";
 import { Agent } from "https";
 import { NodeHttpHandler } from "@smithy/node-http-handler";
+import { normalize } from "path";
 
 const debug = _debug("aws-azure-login");
 
@@ -124,6 +125,67 @@ const states = [
           });
         })(),
       ]);
+    },
+  },
+  {
+    name: "user selection",
+    selector: `#otherTile > div > div.table-cell.tile-img > img`,
+    async handler(page: puppeteer.Page, _selected: puppeteer.ElementHandle, noPrompt: boolean, defaultUsername: string): Promise<void> {
+      // This state will only be hit if the user has previously logged in, but requires password / MFA.
+      debug("Account selector has appeared.");
+
+      // Normalize to lower because Microsoft likes UPN in lower case.
+      const normalizedDefaultUsername = (defaultUsername) ? String(defaultUsername).toLowerCase() : false;
+
+      // Build the list of available users from the prompt.
+      const accountRowList = await page.$$("#tilesHolder > div.tile-container > div > div.table");
+      let accountList = [];
+      for (let account of accountRowList) {
+        // Grab the username associated with the tile.
+        accountList.push(await page.evaluate(el => el.getAttribute("data-test-id"), account));
+      }
+      // Allow the user to select none of the above.
+      accountList.push("Other");
+
+      let username;
+
+      if (noPrompt && defaultUsername && accountList.includes(normalizedDefaultUsername)) {
+        // No prompt, default username specified, account list from Microsoft contains the username.
+        debug("Not prompting user for username.");
+        username = normalizedDefaultUsername;
+      } else if (noPrompt && defaultUsername && !accountList.includes(normalizedDefaultUsername)) {
+        // No prompt, default username sepcified, account list doesn't contain username.
+        debug("Default username specified not found and no prompt specified.");
+        throw new Error("Unable to find account");
+      } else {
+        // Nothing specified, ask user what they'd like to do.
+        debug(`Prompting user for username out of ${accountList}`);
+        console.log("Please select which account you'd like to use.");
+        const answers = await inquirer.prompt([
+          {
+            name: "account",
+            message: "Account:",
+            type: "list",
+            choices: accountList,
+            default: normalizedDefaultUsername,
+          } as Question,
+        ]);
+
+        username = answers.account;
+      }
+
+      // Take action on the tiles presented.
+      if (username === "Other") {
+        // Will result in username query handler being run.
+        debug("Proceeding with 'Other' account.");
+        await page.click("#otherTile");
+        await Bluebird.delay(500);
+      } else {
+        // Will likely result in password or MFA handlers.
+        debug("Proceeding with selected account.");
+        await page.click(`[data-test-id="`+username+`"]`);
+        await Bluebird.delay(500);
+      }
     },
   },
   {
@@ -394,6 +456,29 @@ const states = [
           });
         })(),
       ]);
+    },
+  },
+  {
+    name: "Duo TFA OTC input",
+    selector: "input[name=passcode-input]:not(.moveOffScreen)",
+    async handler(page: puppeteer.Page): Promise<void> {
+      const { verificationCode } = await inquirer.prompt([
+        {
+          name: "verificationCode",
+          message: "Verification Code:",
+        } as Question,
+      ]);
+
+      debug("Focusing on verification code input");
+      await page.focus(`input[name="passcode-input"]`);
+
+      debug("Typing verification code");
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      await page.keyboard.type(verificationCode);
+
+      debug("Submitting form");
+      await page.click("button[type=submit]");
+      await Bluebird.delay(500);
     },
   },
   {
