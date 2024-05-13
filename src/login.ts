@@ -15,7 +15,6 @@ import { paths } from "./paths";
 import mkdirp from "mkdirp";
 import { Agent } from "https";
 import { NodeHttpHandler } from "@smithy/node-http-handler";
-import { normalize } from "path";
 
 const debug = _debug("aws-azure-login");
 
