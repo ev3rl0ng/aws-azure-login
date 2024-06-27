@@ -153,7 +153,7 @@ const states = [
         debug("Not prompting user for username.");
         username = normalizedDefaultUsername;
       } else if (noPrompt && defaultUsername && !accountList.includes(normalizedDefaultUsername)) {
-        // No prompt, default username sepcified, account list doesn't contain username.
+        // No prompt, default username specified, account list doesn't contain username.
         debug("Default username specified not found and no prompt specified.");
         throw new Error("Unable to find account");
       } else {
@@ -464,7 +464,7 @@ const states = [
       const { verificationCode } = await inquirer.prompt([
         {
           name: "verificationCode",
-          message: "Verification Code:",
+          message: "DUO Verification Code:",
         } as Question,
       ]);
 
@@ -477,7 +477,6 @@ const states = [
 
       debug("Submitting form");
       await page.click("button[type=submit]");
-      await Bluebird.delay(500);
     },
   },
   {
